@@ -1,0 +1,5 @@
+"0","myseries %>%"
+"0","  autoplot() +"
+"0","  labs(title=""Aus Retail turnover"","
+"0","       x=""Month"","
+"0","       y=""Revenue($Million AUD)"")"

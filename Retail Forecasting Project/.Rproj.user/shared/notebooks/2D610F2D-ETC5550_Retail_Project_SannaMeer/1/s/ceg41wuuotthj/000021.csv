@@ -1,0 +1,4 @@
+"0","#Ljung-Box test"
+"0","fit_arima2|>"
+"0","  augment() |>"
+"0","  features(.innov, ljung_box, lag = 3, dof=2)  #choosing lag value = 3 as from ACF plot we can see number of significant spikes = 2 and plus 1 and dof =2 for 2 parameters"

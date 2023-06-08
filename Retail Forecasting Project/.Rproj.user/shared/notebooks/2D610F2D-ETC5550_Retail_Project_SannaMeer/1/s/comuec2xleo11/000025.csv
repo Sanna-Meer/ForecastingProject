@@ -1,0 +1,5 @@
+"0","#Ljung-Box test"
+"0",""
+"0","fit_best_ETS|>"
+"0","  augment() |>"
+"0","  features(.innov, ljung_box, lag = 8)  #choosing lag value = 8 as from ACF plot we can see number of significant spikes = 7 and plus 1"

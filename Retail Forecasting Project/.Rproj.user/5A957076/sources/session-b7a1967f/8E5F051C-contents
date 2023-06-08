@@ -1,0 +1,621 @@
+---
+title: "Retail Forecasting Project"
+date: "2023-05-21"
+author: "Sanna Meer"
+output: 
+  html_document:
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This retail project produces forecasts of the Australian Retail time series data. The purpose is to forecast the retail turnover (in millions) from the time series data. This project delves into the fascinating world of forecasting using  ETS and ARIMA models to predict the turnover with precision and accuracy.  
+
+
+```{r, message=FALSE, warning=FALSE}
+#libraries used in this project
+library(fpp3)
+library(stats)
+library(fable)
+library(fabletools)
+library(tidyverse)
+library(readxl)
+library(ggplot2)
+library(tidyr)
+```
+
+## Original Dataset 
+
+The original dataset is taken from the aus_retail data set from the fpp3 package. This dataset gives insight into the various retail industries and their monthly turnover in millions in each Australian state.  
+
+```{r, class.source = 'fold-hide' }
+set.seed(32707290)
+myseries <- aus_retail |>
+  # Remove discontinued series
+  filter(!(`Series ID` %in% c("A3349561R","A3349883F","A3349499L","A3349902A",
+                        "A3349588R","A3349763L","A3349372C","A3349450X",
+                        "A3349679W","A3349378T","A3349767W","A3349451A"))) |>
+  # Select a series at random
+  filter(`Series ID` == sample(`Series ID`,1))
+```
+
+
+### Statistical Features of the data :
+
+```{r, message=FALSE, warning=FALSE, class.source = 'fold-hide'}
+myseries %>%
+  autoplot() +
+  labs(title="Aus Retail turnover",
+       x="Month",
+       y="Revenue($Million AUD)")
+```
+
+The Aus Retail data set in general is a tsibble which gives the Retail Turnover(in $Million AUD) for Australian states with a corresponding industry breakdown. On examining my time series data, I notice that for my series, the data is for the state Victoria only and the industry is Hardware, building and garden supplies retailing. From the plot produced above using the **autoplot** function, we can see some interesting statistical features of the series :
+
+- In general, there is an increasing trend for the Retail turnover over the years.  
+- There is also a seasonal pattern that increases in size as the level of the series increases.  
+- The data is dated from April 1982 to December 2018.  
+- The peak,as seen from the trend,is around the end of every year for most cases. This may be because of the boxing day sales towards the end of December every year with most retail outlets offering big discounts to attract customers.  
+- Somewhere towards the second half of 1993, there was an usual increase in revenue that was not observed in the previous years. The sustained strong growth of the Australian Economy across this period created both solid employment growth and strong growth in the retail section.  
+- There is a period between 2005- 2010 which saw a reduced retail turnover. The Global Financial Crisis that hit the market around 2008 can be the reason that may have affected the retail sales as the economy had weakened which led to a drop in retail sales.  
+- The economy and thus the retail market recovered after 2010 and increases significantly.  
+
+
+```{r, class.source = 'fold-hide'}
+myseries %>%
+  gg_season(Turnover, labels = "both") +
+  labs(y = "$ (millions)",
+       title = "Seasonal plot: Australian Retail Revenue")
+```
+
+
+- It is clear from the seasonal plot that there is a jump in the Australian Retail revenues in October each year (for most cases).  
+- After a jump in October, the revenue takes a fall in November before picking up again in December for the Christmas and Boxing day sale season.  
+- The lowest retail revenues seem to be in February which seems to be the month after the Sale season comes to an end. February sales slumps are common as shoppers tighten their budgets.  
+- March to September is more or less stagnant and steady with sales being a consistent level.  
+- There is an usually high retail revenue in June of 2001. It may be possible that a change in any lifestyle trend may have led to an increased demand for some products or they may have been a particular event or promotion that may have taken place in 2001 that drove people out to shop.  
+- Another feature that interested me was that in July 2011, there was an unusual dip in the steady mid year revenue that was observed in other years. On observing historic data, it is seen that Reserve Bank increased the interest rates which made it difficult for consumers to borrow money and that may have reduced the disposable income available to consumers to spend on retail.  
+
+
+### Transforming the data set :  
+
+The idea with a time series is to generate forecasts that are reliable. Sometimes, the original data may not be the best way to go about producing forecasts. In those scenarios, transforming the time series is the best way to go. This is done to achieve stabilizing variance, stationarity, linearity and so on.   
+
+- As is evident from the first plot, the time series does not have constant variance and the variance seems to be higher towards the right end of the plot.  
+- A *Box-Cox transformation* is a family of transformations that includes both logarithms and power transformations and it depends on the parameter λ which controls how strong the transformation will be.  
+- The goal with Box-Cox transformations is to find the value of the parameter lambda (λ) to transform the data in such a way that we achieve constant variance for our time series.  
+
+```{r, class.source = 'fold-hide'}
+lambda <- 0.8
+  myseries %>%
+  autoplot(box_cox(Turnover, lambda = 0.8)) +   #play around with lambda
+  labs(y = "$ (millions)",
+       title = latex2exp::TeX(paste0(
+         "Transformed Aus Retail turnover with $\\lambda$ = ",
+         round(lambda,2))))
+
+```
+
+From the Box-Cox plot above,  
+- After plugging in various values for λ, I found the best value for this parameter is around **0.8**   
+- The idea as explained earlier, was to find constant variance for our series and according to my understanding, the variance of the series remains constant over time.  
+- The data points are spread out consistently through the time series  
+- With a value less than 0.8 for lambda( for example 0.4 ) , the series seems to be strong in the start of the series showing high variance for low values and then variance decreasing gradually for the higher values, which does not satisfy our goal of constant variance(shown below)
+
+```{r, class.source = 'fold-hide'}
+myseries %>%
+  autoplot(box_cox(Turnover, 0.4))  + #taking lambda as 0.4
+  labs(y = "Turnover in $(millions)") 
+```
+
+- For  values more than 0.8 for lambda( for example 1.0) , the series seems to be strong towards the right end of the series showing high variance for high values while having low variance for the lower values, which also does not satisfy our goal of constant variance (shown below)
+
+```{r, class.source = 'fold-hide'}
+myseries %>%
+  autoplot(box_cox(Turnover, 1.0)) +
+  labs(y = "Turnover in $(millions)") #taking lambda as 1.0
+```
+
+Therefore , the best value for the transformation parameter λ for this time series is 0.8
+
+#### Checking the value using Guerrero method
+
+```{r, class.source = 'fold-hide'}
+myseries %>%
+  features(Turnover, features = guerrero) %>%
+  pull(lambda_guerrero)
+```
+According to Guerrero method, it suggests λ to be 0.554. However, I believe with that value,the variance still seems to be stronger towards the left of the series(for lower values).  
+- Thus, I chose to stick to **0.8** as the best value for our Box-Cox transformation.  
+- This transformed data is used further on to fit models.  
+
+
+### Methodology for chosen ETS Models  :  
+
+- ETS(Exponential Smoothing) stands for Error, Trend and Seasonality. It is a class of time series models used for forecasting, particularly when the time series exhibits trend and seasonality patterns.  
+- ETS models are based on the decomposition of a time series into three components: error, trend, and seasonality.  
+- To fit ETS models, the box cox transformed data is used with lambda of 0.8  
+
+- Three ETS models are fitted to the time series :  an additive model is chosen with additive error and trend but multiplicative seasonality, along with a multiplicative model with multiplicative error and seasonality and additive trend. Lastly, an auto ETS model is chosen to let it chose an auto model after trying all the possible models.  
+- There fore, the models chosen are ETS(A,A,M) , ETS(M,A,M) and an auto selected model  
+
+```{r}
+fit_ETS <- myseries %>%
+  model(
+  additive = ETS(box_cox(Turnover, 0.8) ~ error("A") + trend("A") + season("M")),
+  multiplicative = ETS(box_cox(Turnover, 0.8) ~ error("M") + trend("A") + season("M")),
+  auto = ETS(box_cox(Turnover, 0.8))
+)
+
+```
+
+```{r, class.source = 'fold-hide'}
+fit_ETS %>%
+  select(additive) %>%
+  report()
+```
+The additive model has the alpha value of 0.43, beta of 0.0001(indicating trend does not move much at all) and gamma is 0.34 and the AIC value is 3868.210
+
+
+```{r, class.source = 'fold-hide'}
+fit_ETS %>%
+  select(multiplicative) %>%
+  report()
+```
+  
+The multiplicative model has the alpha value of 0.37, beta of 0.0001(indicating trend does not move much at all) and gamma is 0.318 and the AIC value is 3887.728
+
+```{r, class.source = 'fold-hide'}
+fit_ETS %>%
+  select(auto) %>%
+  report()
+```
+The auto ETS model chosen is with additive error, additive trend and additive seasonality i.e ETS(A,A,A) which seems to make sense considering the time series shows additive trend and seasonality. The alpha value of 0.53, beta of 0.0001(indicating trend does not move much at all) and gamma is 0.258 and the AIC value is 3856.728
+
+The goal is of selecting the model that balances goodness of fit and model complexity. The model with the lowest AIC or AICc value is generally preferred as it indicates the best trade-off between fit and complexity. Here the auto or **ETS(A,A,A)** model gives the lowest AIC indicating that this is the best model in terms of minimizing the AIC.  
+
+#### Applying the models to test data : 
+
+- Applying the models to a test-set consisting of the last 24 months of the data provided
+
+```{r, class.source = 'fold-hide'}
+myseries1 <- myseries %>%
+  slice(1:417)   #training set
+```
+
+```{r,class.source = 'fold-hide'}
+fit_ETS_test <- myseries1 %>%
+  model(
+  additive = ETS(box_cox(Turnover, 0.8) ~ error("A") + trend("A") + season("M")),
+  multiplicative = ETS(box_cox(Turnover, 0.8) ~ error("M") + trend("A") + season("M")),
+  auto = ETS(box_cox(Turnover, 0.8))
+)
+```
+
+```{r, class.source = 'fold-hide'}
+fc <- fit_ETS_test %>%
+  fabletools::forecast(h = "2 years")   #to forecast on the test data for 2 years ahead
+```
+
+```{r,class.source = 'fold-hide'}
+fabletools::accuracy(fit_ETS_test)
+```
+
+The forecast on the fitted models, we can see that :  
+
+- additive model gives an *RMSE of 10.62* on the training set  
+- multiplicative model gives  an *RMSE of 10.67* on the training set  
+- auto selected model  gives an *RMSE of 10.34* on the training set  
+
+We can see that the auto selected model i.e **ETS(A,A,A)** gives the lowest RMSE and is hence the best model to forecast on this time series.  
+Another reason for this being the best model according to me is that multiplicative ETS models do not perform very well in terms of producing forecasts.  
+
+
+
+### Methodology for chosen ARIMA Models  :  
+
+- ARIMA (Autoregressive Integrated Moving Average) model is a popular time series forecasting model that combines autoregressive (AR), differencing (I), and moving average (MA) components to forecast time series.  
+- In general, the ARIMA model assumes that the data is stationary. Stationary data means that the statistical properties of the data, such as the mean and variance, do not change over time.  
+
+```{r, class.source = 'fold-hide'}
+lambda <- 0.8
+  myseries %>%
+  autoplot(box_cox(Turnover, lambda = 0.8)) +   #play around with lambda
+  labs(y = "Revenue in $ (millions)",
+       title = latex2exp::TeX(paste0(
+         "Transformed Aus Retail turnover with $\\lambda$ = ",
+         round(lambda,2))))
+
+```
+
+```{r, warning=FALSE, class.source = 'fold-hide'}
+myseries %>%
+  ACF(Turnover,lambda=0.8 ) %>%
+  autoplot() 
+```
+
+
+As we can see, the time series at hand is not stationary. The presence of trend and seasonality indicates non stationary data. And from the ACF plot, we can see slow decay indicating non stationarity.  
+
+
+#### Differencing the time series  
+
+In order to make non-stationary data stationary, we use differencing. It involves taking the difference between consecutive observations to remove trends or seasonality from the data.  
+Differencing can be first order or seasonal : the first order difference is calculated by subtracting each data point from its previous data point. A seasonal difference refers to the differencing of a time series with respect to its seasonal period.  
+  
+
+Various *Unit Root tests* are used to determine if the data needs to be differenced. I have used the KPSS test here to determine the same. The KPSS test assumes that the data is stationary and evidence is found to see if it is not stationary.  
+
+ Since the data is strongly seasonal, it makes more sense to take a seasonal difference rather than a first order difference.
+
+
+```{r,  class.source = 'fold-hide'}
+myseries %>%
+  features(Turnover, feat_stl) %>%
+  select(seasonal_strength_year)
+```
+The seasonal strength is 0.93 which is quite large (greater than the threshold of 0.64) this suggests we need to do a seasonal differencing.
+
+```{r,  class.source = 'fold-hide'}
+myseries %>%
+  features(Turnover, unitroot_nsdiffs)
+```
+The nsdiffs tells us that 1 seasonal difference is required for the time series to be stationary, hence one difference is taken and it is checked for another unit root test 
+
+
+```{r, class.source = 'fold-hide' }
+myseries %>%
+  mutate(turnover=difference(Turnover, 12)) %>%   
+  features(turnover, unitroot_ndiffs)
+```
+The unit root test suggests another differencing is needed  and thus we take the first order difference after the seasonal difference.
+
+```{r, warning=FALSE,  class.source = 'fold-hide'}
+myseries %>%
+  autoplot (
+    Turnover %>%
+      difference(12) %>%  #seasonal diff
+      difference(1)   #first order diff
+  
+  )
+```
+
+No more differences are needed and the data looks stationary and now can be used for ARIMA modelling.
+
+#### Fitting appropriate ARIMA models : 
+
+We can fit various ARIMA models and also let it automatically chose a model.
+
+
+```{r, warning=FALSE, class.source = 'fold-hide'}
+myseries %>%
+  gg_tsdisplay(difference(Turnover,12) %>%
+                 difference(1), 
+               plot_type = "partial", lag=60) +
+  labs(title="Double differenced", y=" ")
+```
+
+Looking at the ACF and PACF plots above for the double differenced data,  we can fit the following models :  
+
+- We can  fit *ARIMA(2,1,0)(3,1,0)[12]* : this with p=2 for 2 significant non seasonal lags from the pacf plot, d=1 for one first order difference taken earlier and q=0, 
+along with P=3 for the 3 seasonal lags form pacf  with D=1 for 1 seasonal difference of lag 12 taken earlier since this is monthly data and Q=0.  
+
+- We can also fit *ARIMA(0,1,1)(0,1,1)[12]* : for q=1 for 1 significant non seasonal lag from acf, p=0, d=1 and P=0, D=1, and Q=1  for 1 seasonal lag from the acf.(keeping other non seasonal lags from acf as non significant for simplicity purposes).  
+- and we can also fit an automatic ARIMA model using the ARIMA function  
+
+
+```{r, class.source = 'fold-hide'}
+fit_arima1 <- myseries %>%
+  model(ARIMA(box_cox(Turnover, 0.8) ~ pdq(2,1,0) + PDQ(3,1,0)))
+report(fit_arima1)
+```
+This model ARIMA(2,1,0)(3,1,0)[12] returns the AIC of **2322.64** and an estimated variance of 12.87  
+
+
+```{r, class.source = 'fold-hide'}
+fit_arima2 <- myseries %>%
+  model(ARIMA(box_cox(Turnover, 0.8) ~ pdq(0,1,1) + PDQ(0,1,1)))
+report(fit_arima2)
+```
+
+This model ARIMA(0,1,1)(0,1,1)[12] returns the AIC value of **2308.26** and an estimated variance of 12.51    
+
+
+```{r, class.source = 'fold-hide'}
+fit_auto <- myseries %>%
+  model(ARIMA(box_cox(Turnover, 0.8)))
+report(fit_auto)
+```
+The auto ARIMA model selected is ARIMA(0,1,2)(0,1,1)[12] implying 2 differences: 1 seasonal and 1 first order, which we had concluded anyway in the differencing section of the project. The p=0, q=2 and d=1 and for the seasonal component - P=0,D=1,Q=1
+
+This  model ARIMA(0,1,2)(0,1,1)[12] includes a first-order non-seasonal differencing, an MA term with a lag of 2, and a seasonal MA term with a lag of 1 for monthly data with a yearly seasonality and returns an AIC value of **2307.35** and the variance of 12.45  
+
+This implies the auto model ARIMA(0,1,2)(0,1,1)[12] has the lowest AIC indicating that this is the best model in terms of minimizing the AIC  
+
+
+#### Applying the models to test data : 
+
+```{r, class.source = 'fold-hide'}
+fit_arima_test <- myseries1 %>%
+  model (
+    ar1 = ARIMA(box_cox(Turnover, 0.8) ~ pdq(2,1,0) + PDQ(3,1,0)),
+    ar2 = ARIMA(box_cox(Turnover, 0.8) ~  pdq(0,1,1) + PDQ(0,1,1)),
+    auto = ARIMA(box_cox(Turnover, 0.8))
+    
+  )
+  
+```
+
+```{r, class.source = 'fold-hide'}
+fc_ar <- fit_arima_test %>%
+  fabletools::forecast(h = "2 years")   #to forecast on the test data for 2 years ahead
+```
+
+```{r, class.source = 'fold-hide'}
+fabletools::accuracy(fit_arima_test)  
+```
+
+We can see that :  
+- ARIMA(2,1,0)(3,1,0)[12] gives an RMSE of **10.08** on the training set  
+- ARIMA(0,1,1)(0,1,1)[12] gives an RMSE of **9.96** on the training set  
+- ARIMA(0,1,2)(0,1,1)[12] gives an RMSE of **9.96** on the training set
+
+The 2 models ARIMA(0,1,1)(0,1,1)[12] and ARIMA(0,1,2)(0,1,1)[12] give same RMSE values and other metrics as well . For simplicity in number of lags I have chosen model 2 i.e **ARIMA(0,1,1)(0,1,1)[12]** as the best model to forecast on this time series. 
+
+
+### Best ARIMA and ETS model  
+
+- The models ETS(A,A,A) and ARIMA(0,1,1)(0,1,1)[12] are chosen from the list of ETS and ARIMA models respectively based on the lowest RMSE values.  
+
+#### Parameter Estimates
+
+```{r, class.source = 'fold-hide'}
+fit_best_ETS <- fit_ETS %>%
+  select(auto)
+report(fit_best_ETS)
+```
+The ETS model has an alpha value of 0.53, beta value of 0.000(indicating the data does not move around much) and gamma value of 0.25 along with the AIC value of 3856.4 and variance of 13.6  
+
+```{r, class.source = 'fold-hide'}
+report(fit_arima2)
+```
+
+The ARIMA  model only has the MA component and  has value θ1 = -0.37  along with the AIC value of 2308.02 and variance of 12.51    
+
+
+
+
+#### Residual Diagnostics  
+
+```{r, class.source = 'fold-hide'}
+fit_best_ETS %>%
+  gg_tsresiduals(lag=36) +
+  labs(title="ETS model Residuals")
+```
+
+From the ACF plot , we can see that the spikes are not white noise and the spikes are statistically significant. The residuals look normally distributed. 
+
+
+
+```{r, class.source = 'fold-hide'}
+#Ljung-Box test
+
+fit_best_ETS|>
+  augment() |>
+  features(.innov, ljung_box, lag = 8)  #choosing lag value = 8 as from ACF plot we can see number of significant spikes = 7 and plus 1
+```
+The p-value from the Ljung Box test on the ETS model is equal to 0.013 which is less than the significant level(0.05), this indicates the data is **not white noise** 
+
+
+
+
+```{r, class.source = 'fold-hide'}
+fit_arima2 %>%
+  gg_tsresiduals(lag=36) +
+  labs(title="ARIMA model Residuals")
+```
+
+From the ACF plot , we can see that the spikes may not be white noise and the spikes may be statistically significant. The residuals look somewhat normally distributed. 
+
+```{r, warning=FALSE, class.source = 'fold-hide'}
+#Ljung-Box test
+fit_arima2|>
+  augment() |>
+  features(.innov, ljung_box, lag = 3, dof=2)  #choosing lag value = 3 as from ACF plot we can see number of significant spikes = 2 and plus 1 and dof =2 for 2 parameters
+```
+The p-value from the Ljung Box test on the ARIMA model is equal to 0.12 which is larger than the significant level(0.05), this indicates the data is **white noise**  
+
+
+
+
+#### Forecasts and prediction intervals
+
+```{r, class.source = 'fold-hide'}
+
+  forecast(fit_best_ETS, h=36) %>%
+  autoplot() +
+  labs(title="Aus Retail turnover- ETS forecast",
+       x="Month",
+       y="Revenue($Million AUD)")
+```
+
+The plot above shows the forecasts produced by the ETS model. The graph also shows the 80% and 95% prediction intervals for the forecast.  
+
+
+```{r, class.source = 'fold-hide'}
+
+forecast(fit_arima2, h=36) %>%
+  autoplot() +
+  labs(title="Aus Retail turnover- ARIMA forecast",
+       x="Month",
+       y="Revenue($Million AUD)")
+```
+
+The plot above shows the forecasts produced by the ARIMA model. There is a trend because here d+D= 2 which gives a local linear trend.The graph also shows the 80% and 95% prediction intervals for the forecast.  
+
+
+### Comparison 
+
+Comparing the preferred ETS and ARIMA model on the test sets:  
+
+ETS model : 
+
+```{r, class.source = 'fold-hide'}
+ fit_ets_final <- fit_ETS_test %>%
+  select(model="auto") %>%
+  fabletools::forecast(h = "2 years") 
+fabletools::accuracy(fit_ets_final, data=myseries) 
+```
+
+ARIMA model :
+
+```{r, class.source = 'fold-hide'}
+fit_arima_final <- fit_arima_test %>%
+  select(model="ar2") %>%
+  fabletools::forecast(h = "2 years") 
+fabletools::accuracy(fit_arima_final, data=myseries) 
+```
+- The ARIMA model has better RMSE, MAE, MASE(lower values)    
+- Comparing the RMSE values of the 2 models , the ETS model gives an RMSE of 18.7 whereas the ARIMA model has an RMSE of 13    
+- The preferred ARIMA model has a lower RMSE value.  
+- A lower RMSE suggests that the model has smaller prediction errors and is better at capturing the underlying patterns and variability in the data, hence the **ARIMA model** is better for forecasting.  
+
+
+### Applying chosen models to full data with out of sample forecasts  
+
+```{r, class.source = 'fold-hide'}
+fit2_ets <- myseries %>%
+  model(
+    ets=ETS(box_cox(Turnover, 0.8) ~ error("A") + trend("A") + season("A")) 
+  ) %>%
+    forecast(h="2 years", level=80)   #2 years past the end of data with 80% prediction interval
+  
+fit2_ets %>%
+  autoplot(myseries) +
+  labs(title="ETS model forecast on full data", 
+       y = "Turnover in millions")
+```
+
+The ETS model forecast on the whole data is shown above with 80% prediction interval, it follows the trend and the seasonality.  
+
+```{r, class.source = 'fold-hide'}
+fit2_arima <- myseries %>%
+  model(
+    arima=ARIMA(box_cox(Turnover, 0.8) ~  pdq(0,1,1) + PDQ(0,1,1))
+  ) %>%
+  forecast(h="2 years", level=80)
+fit2_arima %>%  #2 years past the end of data with 80% prediction interval
+  autoplot(myseries) +
+  labs(title="ARIMA model forecast on full data", 
+       y= "Turnover in millions")
+
+```
+
+The ARIMA model forecast on the whole data is shown for 2 years ahead after the end of data above with 80% prediction interval, it follows the trend and the seasonality, somewhat similar to ETS forecast.  
+
+
+### Comparison with ABS Data :  
+
+The actual numbers are downloaded from the ABS website and are compared with the two models forecasted numbers.  
+
+```{r, class.source = 'fold-hide' }
+updated_data <- read_excel("8501011.xls", sheet = "Data1", skip = 9) |>
+  select(Month = `Series ID`, Turnover = myseries$`Series ID`[1]) |>
+  mutate(
+    Month = yearmonth(Month),
+    State = myseries$State[1],
+    Industry = myseries$Industry[1]
+  ) |>
+  as_tsibble(index = Month, key = c(State, Industry))
+
+forecast_actual <- updated_data %>%
+  slice(442:465)
+```
+
+
+```{r, class.source = 'fold-hide'}
+forecast_ets <- fit2_ets$.mean
+forecast_arima <- fit2_arima$.mean
+
+comparison_data <- data.frame(ETS_Forecast = forecast_ets, ARIMA_Forecast = forecast_arima, Actual = forecast_actual) 
+head(comparison_data,10)  #showing first 10 rows of the data
+```
+The table above shows side by side comparison of the actual and the forecasted numbers (for the 2 years forecast horizon), model wise. The data shows only first 10 observations for simplicity.  
+
+ETS model forecast accuracy :  
+
+```{r, class.source = 'fold-hide'}
+fit2_ets %>%
+  accuracy(forecast_actual)
+```
+
+ARIMA model forecast accuracy : 
+
+```{r, class.source = 'fold-hide'}
+fit2_arima %>%
+  accuracy(forecast_actual)
+```
+
+When compared to the actual numbers , The ETS model gives a  RMSE of 64.41 and the ARIMA model gives a RMSE of 61.04  
+- A lower RMSE suggests that the model has smaller prediction errors and is better at capturing the underlying patterns and variability in the data.  
+- Not only that, ARIMA model also has lower ME, MPE, MAE metrics.  
+
+Thus the **ARIMA model** did better at forecasting when comparing the model forecast turnover with actual turnover numbers.  
+
+
+```{r, class.source = 'fold-hide'}
+
+# Reshape the data into a longer format
+comparison_data_long <- pivot_longer(comparison_data, cols = c(ETS_Forecast, ARIMA_Forecast, Actual.Turnover),
+                                     names_to = "Model", values_to = "Value")
+
+# Create a line plot
+plot <- ggplot(data = comparison_data_long, aes(x = Actual.Month , y = Value, color = Model)) +
+  geom_line() +
+  labs(title = "Forecast Comparison",
+       x = "Time",
+       y = "Turnover in $(millions)") +
+  scale_color_manual(values = c("ETS_Forecast" = "blue", "ARIMA_Forecast" = "red", "Actual.Turnover" = "green")) +
+  theme_bw()
+
+# Display the plot
+plot
+
+
+```
+
+Visualising this comparison, for the 2 years of forecast i.e from Jan 2019 to Dec 2020, we can see that  both models did pretty well in capturing the trends and seasonalities, but the ARIMA model is closer to the actual numbers.  
+
+One interesting thing though to note is that, the models did well predicting the forecast numbers till early 2020(March 2020), however as is evident from the graph, after that the forecast numbers were largely off.  
+
+The Turnover numbers were underestimated by the models. This means that the turnover in the Hardware, building and garden supplies retailing industry was actually greater than that estimated by the models from March 2020 on wards.  
+
+This is largely due to the Covid-19 pandemic starting at that point and people were unable to go out due to lockdowns and more people started spending time doing things on their own at home. The focus also shifted to outdoor spaces as most people were home all the time.  Also since people were working remotely, there was an increase in the remote office supplies demand.  
+
+It is worthy to note that not all industries might have benefited like this with an increased turnover during the pandemic.  
+
+
+### Benefits and Limitations of the models :  
+
+In conclusion, the benefits and limitations of the models are discussed below  
+
+#### ETS model
+ ETS model ETS(A,A,A) has several benefits and limitations :      
+ *Benefits* -  
+ - It is a simple model and captures the basic components like trend, seasonality and error in an additive manner.  
+ - The model is computationally fast, making it suitable to analyse large time series.  
+ *Limitations* -  
+ - The model focuses on and assumes additive error, trend and seasonality and is not the best choice to forecast series which have multiplicative components.  
+ - The model has limited forecast horizon , and can be used well for upto median term forecasts. However, long term forecasts may not be reliable when produced using this model.  
+ 
+#### ARIMA model
+ ARIMA model ARIMA(0,1,1)(0,1,1)[12] has several benefits and limitations :  
+ *Benefits* -  
+ - Since there is a seasonal differencing term, it captures and handles seasonality in the data well.    
+ - The model performs well even on long term forecasts and has better forecasting accuracy numbers when compared to the ETS model.  
+ *Limitations* -  
+ - The model assumes data stationarity and has differencing terms to achieve stationarity. This model hence is not very good for forecasting non stationary data.  
+ - The model is not very flexible because of its limited number of AR and MA terms i.e p=0 and q=1 and also P=0 and Q=1(seasonal). This means it may not be as flexible when it comes to capture complex patterns which may need more AR or MA terms .  
+ 

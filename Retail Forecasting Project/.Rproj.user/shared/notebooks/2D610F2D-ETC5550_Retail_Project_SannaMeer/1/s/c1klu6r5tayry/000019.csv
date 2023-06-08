@@ -1,0 +1,5 @@
+"0","forecast_ets <- fit2_ets$.mean"
+"0","forecast_arima <- fit2_arima$.mean"
+"0",""
+"0","comparison_data <- data.frame(ETS_Forecast = forecast_ets, ARIMA_Forecast = forecast_arima, Actual = forecast_actual) "
+"0","head(comparison_data,10)  #showing first 10 rows of the data"

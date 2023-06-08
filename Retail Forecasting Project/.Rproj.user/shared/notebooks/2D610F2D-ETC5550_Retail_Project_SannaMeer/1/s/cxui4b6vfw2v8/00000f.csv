@@ -1,0 +1,6 @@
+"0","fit_ETS_test <- myseries1 %>%"
+"0","  model("
+"0","  additive = ETS(box_cox(Turnover, 0.8) ~ error(""A"") + trend(""A"") + season(""M"")),"
+"0","  multiplicative = ETS(box_cox(Turnover, 0.8) ~ error(""M"") + trend(""A"") + season(""M"")),"
+"0","  auto = ETS(box_cox(Turnover, 0.8))"
+"0",")"

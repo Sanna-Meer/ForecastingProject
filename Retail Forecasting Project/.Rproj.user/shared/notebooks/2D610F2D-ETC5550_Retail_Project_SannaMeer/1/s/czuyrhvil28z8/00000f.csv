@@ -1,0 +1,2 @@
+"0","myseries1 <- myseries %>%"
+"0","  slice(1:417)   #training set"

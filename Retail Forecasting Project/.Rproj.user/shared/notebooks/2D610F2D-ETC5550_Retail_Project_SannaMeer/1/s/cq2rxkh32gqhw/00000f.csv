@@ -1,0 +1,2 @@
+"0","fc_ar <- fit_arima_test %>%"
+"0","  fabletools::forecast(h = ""2 years"")   #to forecast on the test data for 2 years ahead"

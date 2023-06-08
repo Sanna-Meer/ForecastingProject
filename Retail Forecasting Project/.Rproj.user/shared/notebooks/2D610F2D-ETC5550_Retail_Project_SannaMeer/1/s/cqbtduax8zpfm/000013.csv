@@ -1,0 +1,2 @@
+"0","fit2_arima %>%"
+"0","  accuracy(forecast_actual)"

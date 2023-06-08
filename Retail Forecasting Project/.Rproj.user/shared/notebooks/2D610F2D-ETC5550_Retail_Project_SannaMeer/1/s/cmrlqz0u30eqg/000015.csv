@@ -1,0 +1,4 @@
+"0","fit_arima_final <- fit_arima_test %>%"
+"0","  select(model=""ar2"") %>%"
+"0","  fabletools::forecast(h = ""2 years"") "
+"0","fabletools::accuracy(fit_arima_final, data=myseries) "

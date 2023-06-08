@@ -1,0 +1,3 @@
+"0","fit_arima2 %>%"
+"0","  gg_tsresiduals(lag=36) +"
+"0","  labs(title=""ARIMA model Residuals"")"

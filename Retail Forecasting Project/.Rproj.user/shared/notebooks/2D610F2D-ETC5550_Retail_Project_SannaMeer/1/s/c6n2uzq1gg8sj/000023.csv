@@ -1,0 +1,6 @@
+"0",""
+"0","forecast(fit_arima2, h=36) %>%"
+"0","  autoplot() +"
+"0","  labs(title=""Aus Retail turnover- ARIMA forecast"","
+"0","       x=""Month"","
+"0","       y=""Revenue($Million AUD)"")"

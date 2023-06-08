@@ -1,0 +1,4 @@
+"0"," fit_ets_final <- fit_ETS_test %>%"
+"0","  select(model=""auto"") %>%"
+"0","  fabletools::forecast(h = ""2 years"") "
+"0","fabletools::accuracy(fit_ets_final, data=myseries) "

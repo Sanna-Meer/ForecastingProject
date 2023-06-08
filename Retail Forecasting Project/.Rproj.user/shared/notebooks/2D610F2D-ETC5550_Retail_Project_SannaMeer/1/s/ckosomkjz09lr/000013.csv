@@ -1,0 +1,8 @@
+"0","lambda <- 0.8"
+"0","  myseries %>%"
+"0","  autoplot(box_cox(Turnover, lambda = 0.8)) +   #play around with lambda"
+"0","  labs(y = ""$ (millions)"","
+"0","       title = latex2exp::TeX(paste0("
+"0","         ""Transformed Aus Retail turnover with $\\lambda$ = "","
+"0","         round(lambda,2))))"
+"0",""

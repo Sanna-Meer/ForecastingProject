@@ -1,0 +1,7 @@
+"0","myseries %>%"
+"0","  autoplot ("
+"0","    Turnover %>%"
+"0","      difference(12) %>%  #seasonal diff"
+"0","      difference(1)   #first order diff"
+"0","  "
+"0","  )"
